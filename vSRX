@@ -1,0 +1,244 @@
+root# show 
+## Last changed: 2019-10-10 06:43:54 UTC
+version 12.1X47-D20.7;
+system {
+    root-authentication {
+        encrypted-password "$1$lFzooFNU$9rcy2ALSePhObzKsbD1ac/"; ## SECRET-DATA
+    }
+    services {
+        ssh;
+        web-management {
+            http {
+                interface ge-0/0/0.0;
+            }
+        }
+    }
+    syslog {
+        user * {
+            any emergency;
+        }
+        file messages {
+            any any;
+            authorization info;
+        }
+        file interactive-commands {
+            interactive-commands any;
+        }
+    }
+    license {
+        autoupdate {
+            url https://ae1.juniper.net/junos/key_retrieval;
+        }
+    }
+}
+interfaces {
+    ge-0/0/0 {
+        description WAN;
+        unit 0 {
+            family inet {
+                address 192.168.46.99/24;
+            }                           
+        }
+    }
+    gr-0/0/0 {
+        unit 0 {
+            clear-dont-fragment-bit;
+            description MPLS-core;
+            tunnel {
+                source 192.168.46.99;
+                destination 192.168.47.1;
+                allow-fragmentation;
+            }
+            family inet {
+                mtu 9000;
+                inactive: filter {
+                    input packet-mode-inet;
+                }
+                address 172.16.255.2/30;
+            }
+            family mpls {
+                mtu 9000;
+                filter {
+                    input packet-mode-mpls;
+                }
+            }
+        }
+    }
+    ge-0/0/1 {
+        description l2tun_vlan509;
+        mtu 1522;
+        encapsulation ethernet-ccc;
+        unit 0 {
+            family ccc {
+                filter {
+                    input packet-mode-ccc;
+                }
+            }
+        }
+    }                                   
+    lo0 {
+        unit 0 {
+            family inet {
+                address 10.255.255.2/32;
+            }
+        }
+    }
+}
+routing-options {
+    static {
+        route 0.0.0.0/0 next-hop 192.168.46.1;
+        route 10.255.255.1/32 next-hop gr-0/0/0.0;
+    }
+}
+protocols {
+    mpls {
+        interface gr-0/0/0.0;
+        interface lo0.0;
+    }
+    inactive: ospf {
+        area 0.0.0.0 {
+            interface lo0.0 {
+                passive;
+            }
+            interface gr-0/0/0.0;
+        }
+    }
+    ldp {
+        interface gr-0/0/0.0;
+        interface lo0.0;
+    }
+    l2circuit {
+        neighbor 10.255.255.1 {
+            interface ge-0/0/1.0 {
+                virtual-circuit-id 509;
+                no-control-word;
+                ignore-encapsulation-mismatch;
+            }                           
+        }
+    }
+}
+security {
+    screen {
+        ids-option untrust-screen {
+            icmp {
+                ping-death;
+            }
+            ip {
+                source-route-option;
+                tear-drop;
+            }
+            tcp {
+                syn-flood {
+                    alarm-threshold 1024;
+                    attack-threshold 200;
+                    source-threshold 1024;
+                    destination-threshold 2048;
+                    queue-size 2000; ## Warning: 'queue-size' is deprecated
+                    timeout 20;
+                }
+                land;
+            }
+        }
+    }
+    policies {
+        from-zone trust to-zone trust {
+            policy default-permit {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }                           
+        }
+        from-zone trust to-zone untrust {
+            policy default-permit {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+        from-zone untrust to-zone trust {
+            policy default-deny {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    deny;
+                }
+            }
+        }
+    }
+    zones {
+        security-zone trust {
+            tcp-rst;
+            host-inbound-traffic {
+                system-services {
+                    all;
+                }
+                protocols {
+                    all;
+                }
+            }
+            interfaces {                
+                ge-0/0/0.0;
+                gr-0/0/0.0;
+                lo0.0;
+                ge-0/0/1.0;
+            }
+        }
+        security-zone untrust {
+            screen untrust-screen;
+            host-inbound-traffic {
+                system-services {
+                    all;
+                }
+                protocols {
+                    all;
+                }
+            }
+        }
+    }
+}
+firewall {
+    family inet {
+        filter packet-mode-inet {
+            term all-traffic {
+                then {
+                    packet-mode;
+                    accept;
+                }
+            }
+        }
+    }
+    family mpls {
+        filter packet-mode-mpls {
+            term all-traffic {
+                then {
+                    packet-mode;
+                    accept;
+                }
+            }                           
+        }
+    }
+    family ccc {
+        filter packet-mode-ccc {
+            term all-traffic {
+                then {
+                    packet-mode;
+                    accept;
+                }
+            }
+        }
+    }
+}
+
